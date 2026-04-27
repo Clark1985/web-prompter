@@ -73,7 +73,7 @@
 
         let animationFrameId = null;
 
-        startBtn.addEventListener('click', async () => {
+        startBtn.addEventListener('click', () => {
             if (animationFrameId) {
                 cancelAnimationFrame(animationFrameId);
                 animationFrameId = null;
@@ -84,24 +84,31 @@
                 return;
             }
 
-            try {
-                video.srcObject = canvas.captureStream(30);
-                await video.play();
-                startScrollingAnimation();
+            // --- 这是最终的、正确的修复逻辑 ---
+            // 1. 定义一个函数，用于请求进入画中画
+            const requestPiP = async () => {
+                try {
+                    await video.requestPictureInPicture();
+                } catch (error) {
+                    console.error('请求画中画失败:', error);
+                    alert(`启动画中画失败: ${error.message}`);
+                }
+            };
 
-                // --- 这是关键的修复 ---
-                // 增加一个 100 毫秒的微小延迟
-                setTimeout(async () => {
-                    if (!video.paused) { // 确保视频仍在播放
-                        await video.requestPictureInPicture();
-                    }
-                }, 100);
-                // --- 修复结束 ---
+            // 2. 设置一个一次性的监听器：当视频开始播放时，立即调用 requestPiP 函数
+            video.addEventListener('playing', requestPiP, { once: true });
 
-            } catch (error) {
-                console.error('启动画中画失败:', error);
-                alert(`启动失败，请检查系统设置或浏览器权限。\n\n错误类型: ${error.name}\n错误信息: ${error.message}`);
-            }
+            // 3. 设置视频源并开始播放，这将触发上面的 'playing' 事件
+            video.srcObject = canvas.captureStream(30);
+            startScrollingAnimation();
+            video.play().catch(error => {
+                // 如果播放本身就失败了，也要告诉用户
+                console.error('视频播放失败:', error);
+                alert(`无法播放视频流: ${error.message}`);
+                // 移除监听器，因为它不会再被触发了
+                video.removeEventListener('playing', requestPiP);
+            });
+            // --- 修复结束 ---
         });
         
         video.addEventListener('leavepictureinpicture', () => {
