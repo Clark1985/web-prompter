@@ -48,9 +48,20 @@
         button:hover {
             background-color: #0056b3;
         }
+        
+        /* --- 这是关键的修复 --- */
+        /* 不再使用 display: none，而是将元素移出屏幕外 */
         .hidden-elements {
-            display: none;
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+            opacity: 0;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
         }
+        /* --- 修复结束 --- */
+
     </style>
 </head>
 <body>
@@ -84,8 +95,6 @@
                 return;
             }
 
-            // --- 这是最终的、正确的修复逻辑 ---
-            // 1. 定义一个函数，用于请求进入画中画
             const requestPiP = async () => {
                 try {
                     await video.requestPictureInPicture();
@@ -95,20 +104,15 @@
                 }
             };
 
-            // 2. 设置一个一次性的监听器：当视频开始播放时，立即调用 requestPiP 函数
             video.addEventListener('playing', requestPiP, { once: true });
 
-            // 3. 设置视频源并开始播放，这将触发上面的 'playing' 事件
             video.srcObject = canvas.captureStream(30);
             startScrollingAnimation();
             video.play().catch(error => {
-                // 如果播放本身就失败了，也要告诉用户
                 console.error('视频播放失败:', error);
                 alert(`无法播放视频流: ${error.message}`);
-                // 移除监听器，因为它不会再被触发了
                 video.removeEventListener('playing', requestPiP);
             });
-            // --- 修复结束 ---
         });
         
         video.addEventListener('leavepictureinpicture', () => {
