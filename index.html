@@ -88,10 +88,18 @@
                 video.srcObject = canvas.captureStream(30);
                 await video.play();
                 startScrollingAnimation();
-                await video.requestPictureInPicture();
+
+                // --- 这是关键的修复 ---
+                // 增加一个 100 毫秒的微小延迟
+                setTimeout(async () => {
+                    if (!video.paused) { // 确保视频仍在播放
+                        await video.requestPictureInPicture();
+                    }
+                }, 100);
+                // --- 修复结束 ---
+
             } catch (error) {
                 console.error('启动画中画失败:', error);
-                // 这里是更新过的代码，会弹出更详细的错误
                 alert(`启动失败，请检查系统设置或浏览器权限。\n\n错误类型: ${error.name}\n错误信息: ${error.message}`);
             }
         });
