@@ -3,40 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>提词相机 v13.0 优化版</title>
+    <title>AI 拍摄提词一体机 v10.1</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; font-family: -apple-system, sans-serif; }
-        #cameraView { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; transform: scaleX(-1); background: #222; }
+        #cameraView { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; transform: scaleX(-1); }
         #prompterCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
-        #recIndicator { position: absolute; top: 50px; left: 20px; z-index: 4; display: none; color: white; font-weight: bold; background: rgba(0,0,0,0.5); padding: 5px 12px; border-radius: 20px; }
+        #recIndicator { position: absolute; top: 50px; left: 20px; z-index: 4; display: none; align-items: center; color: white; font-size: 14px; font-weight: bold; background: rgba(0,0,0,0.5); padding: 5px 12px; border-radius: 20px; }
+        .dot { width: 10px; height: 10px; background: #ff3b30; border-radius: 50%; margin-right: 8px; animation: blink 1s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
         .ui-layer { position: absolute; bottom: 40px; left: 0; width: 100%; z-index: 3; display: flex; flex-direction: column; align-items: center; }
-        .control-panel { background: rgba(0,0,0,0.8); padding: 20px; border-radius: 24px; width: 90%; max-width: 450px; backdrop-filter: blur(20px); box-sizing: border-box; }
-        textarea { width: 100%; height: 120px; background: rgba(255,255,255,0.1); border: 1px solid #444; color: #fff; border-radius: 12px; padding: 12px; font-size: 16px; margin-bottom: 15px; outline: none; resize: none; }
+        .control-panel { background: rgba(0,0,0,0.7); padding: 20px; border-radius: 24px; width: 90%; max-width: 450px; backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.15); box-sizing: border-box; }
+        #textInput { width: 100%; height: 100px; background: rgba(255,255,255,0.1); border: 1px solid #444; color: #fff; border-radius: 12px; padding: 12px; font-size: 16px; outline: none; resize: none; margin-bottom: 10px; }
+        .speed-row { display: flex; align-items: center; color: #fff; font-size: 13px; margin: 10px 0; }
+        input[type="range"] { flex: 1; margin: 0 15px; -webkit-appearance: none; background: rgba(255,255,255,0.2); height: 4px; border-radius: 2px; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 26px; background: #fff; border-radius: 50%; }
         .btn-group { display: flex; gap: 12px; width: 100%; }
-        button { flex: 1; padding: 18px; border-radius: 14px; border: none; font-weight: bold; font-size: 17px; cursor: pointer; transition: 0.2s; }
+        button { flex: 1; padding: 16px; border-radius: 14px; border: none; font-weight: bold; font-size: 16px; cursor: pointer; }
         #mainBtn { background: #ff3b30; color: white; }
-        /* 录制状态样式 */
-        .recording-mode textarea, .recording-mode .speed-label { display: none; }
-        .recording-mode .control-panel { background: rgba(0,0,0,0.4); padding: 15px; }
+        .recording-mode #textInput { display: none; }
     </style>
 </head>
 <body>
 
-<div id="recIndicator">● REC <span id="timer">00:00</span></div>
+<div id="recIndicator"><div class="dot"></div> <span id="timer">00:00</span></div>
 <video id="cameraView" autoplay playsinline muted></video>
 <canvas id="prompterCanvas"></canvas>
 
 <div class="ui-layer">
     <div class="control-panel">
-        <textarea id="textInput" placeholder="请在此粘贴文案..."></textarea>
-        <div class="speed-label" style="display:flex; align-items:center; color:#fff; margin-bottom:15px; font-size:14px;">
+        <textarea id="textInput" placeholder="在此粘贴文案..."></textarea>
+        <div class="speed-row">
             <span>🐢慢</span>
-            <input type="range" id="speedInput" min="0.5" max="5.0" step="0.1" value="1.5" style="flex:1; margin:0 10px;">
-            <span id="speedNum">1.5</span>
+            <input type="range" id="speedInput" min="0.5" max="5" step="0.1" value="1.5">
+            <span id="speedNum" style="min-width: 30px;">1.5</span>
+            <span>快🐇</span>
         </div>
         <div class="btn-group">
-            <button onclick="location.reload()" style="background:#3a3a3c; color:white;">刷新</button>
-            <button id="mainBtn">1. 点击开启相机</button>
+            <button id="resetBtn" onclick="location.reload()" style="background:#3a3a3c; color:white;">重置</button>
+            <button id="mainBtn">开启相机并录制</button>
         </div>
     </div>
 </div>
@@ -46,125 +50,118 @@
     const canvas = document.getElementById('prompterCanvas');
     const ctx = canvas.getContext('2d');
     const mainBtn = document.getElementById('mainBtn');
-    const textInput = document.getElementById('textInput');
     const speedInput = document.getElementById('speedInput');
     const speedNum = document.getElementById('speedNum');
+    
+    let isRecording = false, startTime, textLines = [], mediaRecorder, recordedChunks = [], timerInterval, stream = null;
 
-    let isRecording = false, stream = null, startTime, textLines = [], mediaRecorder, recordedChunks = [], timerInterval;
-
-    // 屏幕尺寸适配
-    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
-    window.addEventListener('resize', resize);
-    resize();
-
-    speedInput.oninput = () => { speedNum.innerText = speedInput.value; };
-
-    // 主按钮点击逻辑
+    // 核心逻辑：按钮点击处理
     mainBtn.onclick = async () => {
-        // 第一步：激活摄像头（用户手势必须）
+        // 第一步：如果相机没开，先开相机（解决 Safari 启动无反应）
         if (!stream) {
             try {
-                mainBtn.innerText = "正在唤起...";
                 stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: "user", width: 1280, height: 720 }, 
                     audio: true 
                 });
                 video.srcObject = stream;
-                await video.play();
-                mainBtn.innerText = "2. 开始录制";
-                return;
+                mainBtn.innerText = "开始录制";
+                resize();
+                return; // 第一次点击只开启相机，不触发录制
             } catch (err) {
-                alert("摄像头开启失败，请确认使用 HTTPS 并在 Safari 中允许权限。");
-                mainBtn.innerText = "1. 点击开启相机";
+                alert("摄像头授权失败，请在 Safari 设置中允许权限。");
                 return;
             }
         }
 
-        // 第二步：开始/停止录制
+        // 第二步：正式开始/停止录制
         if (!isRecording) {
-            startRec();
-        } else {
-            stopRec();
-        }
-    };
+            const content = document.getElementById('textInput').value.trim();
+            if (!content) return alert("请先输入文案");
+            
+            isRecording = true;
+            document.body.classList.add('recording-mode');
+            mainBtn.innerText = "停止录制";
+            textLines = getLines(content);
+            startTime = Date.now();
+            recordedChunks = [];
 
-    function startRec() {
-        const content = textInput.value.trim();
-        if (!content) return alert("请输入文案");
-
-        isRecording = true;
-        document.body.classList.add('recording-mode');
-        mainBtn.innerText = "停止录制并下载";
-        mainBtn.style.background = "#8e8e93"; // 录制中变色提示
-
-        // 提词排版
-        ctx.font = 'bold 36px sans-serif';
-        textLines = [];
-        const chars = content.split(''), maxWidth = canvas.width * 0.85;
-        let line = '';
-        for (let c of chars) {
-            if (c === '\n') { textLines.push(line); line = ''; continue; }
-            if (ctx.measureText(line + c).width > maxWidth) { textLines.push(line); line = c; }
-            else line += c;
-        }
-        textLines.push(line);
-
-        startTime = Date.now();
-        recordedChunks = [];
-        
-        try {
-            // V10 核心参数：固定码率 + mp4 格式
-            mediaRecorder = new MediaRecorder(stream, { 
+            mediaRecorder = new MediaRecorder(stream, {
                 mimeType: 'video/mp4',
                 videoBitsPerSecond: 2500000 
             });
+
             mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
-            mediaRecorder.onstop = handleDownload;
-            
-            mediaRecorder.start(1000); // 每秒保存分段，防止长视频卡死
-            document.getElementById('recIndicator').style.display = 'block';
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `录制_${Date.now()}.mp4`;
+                a.click();
+            };
+
+            mediaRecorder.start(1000); 
+            document.getElementById('recIndicator').style.display = 'flex';
             startTimer();
-            animate();
-        } catch (e) {
-            alert("初始化失败: " + e.message);
+            render();
+        } else {
+            // 【修正停止逻辑】：不刷新页面，手动清理状态
+            isRecording = false;
+            mediaRecorder.stop(); 
+            clearInterval(timerInterval);
+            document.body.classList.remove('recording-mode');
+            document.getElementById('recIndicator').style.display = 'none';
+            mainBtn.innerText = "开始录制";
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // 清空提词画面
         }
+    };
+
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.onresize = resize;
+    speedInput.oninput = () => { speedNum.innerText = speedInput.value; };
+
+    function getLines(text) {
+        ctx.font = 'bold 34px sans-serif';
+        const lines = [], chars = text.split(''), maxWidth = canvas.width * 0.8;
+        let line = '';
+        for (let char of chars) {
+            if (char === '\n') { lines.push(line); line = ''; continue; }
+            if (ctx.measureText(line + char).width > maxWidth) { lines.push(line); line = char; }
+            else line += char;
+        }
+        lines.push(line);
+        return lines;
     }
 
-    function stopRec() {
-        isRecording = false;
-        mediaRecorder.stop(); // 这里会触发 handleDownload
-        
-        // 核心优化：立即恢复 UI 状态而不刷新页面
-        document.body.classList.remove('recording-mode');
-        mainBtn.innerText = "2. 开始录制";
-        mainBtn.style.background = "#ff3b30";
-        document.getElementById('recIndicator').style.display = 'none';
-        clearInterval(timerInterval);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        document.getElementById('timer').innerText = "00:00";
-    }
-
-    function handleDownload() {
-        const blob = new Blob(recordedChunks, { type: 'video/mp4' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `提词录制_${Date.now()}.mp4`;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-            URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-            alert("录制结束！视频已尝试下载。");
-        }, 500);
-    }
-
-    function animate() {
+    function render() {
         if (!isRecording) return;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = "rgba(0,0,0,0.3)";
-        ctx.fillRect(0, 100, canvas.width, 320); // 提词阴影区
+        ctx.fillRect(0, 100, canvas.width, 300);
+        ctx.fillStyle = '#00FF00'; ctx.font = 'bold 36px sans-serif'; ctx.textAlign = 'center';
         
-        ctx.fillStyle = '#00FF00'; ctx.font = 'bold 38px sans-serif'; ctx.textAlign = 'center';
         const elapsed = (Date.now() - startTime) / 1000;
-        let yPos =
+        const speed = parseFloat(speedInput.value);
+        let yPos = 380 - (speed * elapsed * 22); 
+
+        textLines.forEach((line, i) => {
+            const drawY = yPos + (i * 52);
+            if (drawY > 100 && drawY < 400) ctx.fillText(line, canvas.width / 2, drawY);
+        });
+        requestAnimationFrame(render);
+    }
+
+    function startTimer() {
+        let s = 0;
+        document.getElementById('timer').innerText = "00:00";
+        timerInterval = setInterval(() => {
+            s++;
+            const m = String(Math.floor(s / 60)).padStart(2, '0');
+            const sec = String(s % 60).padStart(2, '0');
+            document.getElementById('timer').innerText = `${m}:${sec}`;
+        }, 1000);
+    }
+</script>
+</body>
+</html>
