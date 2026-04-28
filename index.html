@@ -3,147 +3,157 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>提词黑客 v5.0 终极版</title>
+    <title>AI 自研全能提词相机</title>
     <style>
-        :root { --apple-blue: #007aff; }
-        body { font-family: -apple-system, sans-serif; background: #f2f2f7; margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; overflow-x: hidden; }
-        .container { width: 100%; max-width: 500px; padding: 20px; box-sizing: border-box; }
-        textarea { width: 100%; height: 280px; border-radius: 18px; border: 1px solid #d1d1d6; padding: 15px; font-size: 18px; line-height: 1.6; box-sizing: border-box; background: white; outline: none; -webkit-appearance: none; }
-        .card { background: white; border-radius: 18px; padding: 25px; margin-top: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); width: 100%; box-sizing: border-box; }
-        .label-row { display: flex; justify-content: space-between; color: #8e8e93; font-size: 14px; margin-bottom: 8px; }
-        input[type="range"] { width: 100%; margin: 15px 0 25px 0; -webkit-appearance: none; background: #e5e5ea; height: 6px; border-radius: 3px; }
-        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; background: white; border-radius: 50%; box-shadow: 0 3px 8px rgba(0,0,0,0.2); border: 0.5px solid #d1d1d6; }
-        button { width: 100%; background-color: var(--apple-blue); color: white; border: none; padding: 20px; border-radius: 16px; font-size: 20px; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-        button:active { opacity: 0.7; transform: scale(0.98); }
-        /* 关键：视频不能完全消失，必须在页面中有微小呈现 */
-        #streamVideo { position: fixed; bottom: 0; left: 0; width: 1px; height: 1px; opacity: 0.01; }
-        #prompterCanvas { display: none; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; font-family: sans-serif; }
+        
+        /* 1. 背景相机预览 */
+        #cameraView { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; transform: scaleX(-1); /* 镜像，符合自拍习惯 */ }
+
+        /* 2. 提词器画布层 */
+        #prompterCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+
+        /* 3. 控制界面层 */
+        .ui-layer { position: absolute; bottom: 30px; left: 0; width: 100%; z-index: 3; display: flex; flex-direction: column; align-items: center; }
+        .control-panel { background: rgba(0,0,0,0.6); padding: 15px; border-radius: 20px; width: 90%; max-width: 400px; backdrop-filter: blur(10px); }
+        textarea { width: 100%; height: 80px; background: transparent; border: 1px solid #555; color: #fff; border-radius: 10px; padding: 10px; box-sizing: border-box; margin-bottom: 10px; }
+        .btn-group { display: flex; gap: 10px; }
+        button { flex: 1; padding: 12px; border-radius: 10px; border: none; font-weight: bold; cursor: pointer; }
+        #startBtn { background: #ff3b30; color: white; } /* 红色录制感 */
+        #settingsBtn { background: #333; color: white; }
+        
+        .speed-row { display: flex; align-items: center; color: #fff; font-size: 12px; margin-top: 10px; }
+        input[type="range"] { flex: 1; margin: 0 10px; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2 style="text-align: center; margin-bottom: 25px;">🚀 提词器 5.0</h2>
-    <textarea id="textInput" placeholder="在此输入你的拍摄文案..."></textarea>
-    
-    <div class="card">
-        <div class="label-row"><span>滚动速度</span><span id="speedVal">2.5</span></div>
-        <input type="range" id="speedInput" min="0.5" max="15" step="0.1" value="2.5">
-        <button id="pipBtn">开启悬浮提词</button>
+<video id="cameraView" autoplay playsinline muted></video>
+<canvas id="prompterCanvas"></canvas>
+
+<div class="ui-layer" id="uiLayer">
+    <div class="control-panel">
+        <textarea id="textInput" placeholder="在此输入录制文案..."></textarea>
+        <div class="speed-row">
+            <span>🐢</span>
+            <input type="range" id="speedInput" min="0.5" max="10" step="0.1" value="2.0">
+            <span>🐇</span>
+        </div>
+        <div class="btn-group">
+            <button id="settingsBtn" onclick="toggleUI()">收起设置</button>
+            <button id="startBtn">开始拍摄</button>
+        </div>
     </div>
 </div>
 
-<canvas id="prompterCanvas" width="600" height="800"></canvas>
-<video id="streamVideo" muted playsinline></video>
-
 <script>
-    const textInput = document.getElementById('textInput');
-    const pipBtn = document.getElementById('pipBtn');
-    const speedInput = document.getElementById('speedInput');
-    const speedVal = document.getElementById('speedVal');
+    const video = document.getElementById('cameraView');
     const canvas = document.getElementById('prompterCanvas');
     const ctx = canvas.getContext('2d');
-    const video = document.getElementById('streamVideo');
+    const textInput = document.getElementById('textInput');
+    const speedInput = document.getElementById('speedInput');
+    const startBtn = document.getElementById('startBtn');
+    const uiLayer = document.getElementById('uiLayer');
 
-    let textLines = [];
     let isPlaying = false;
     let startTime;
-    let initialOffset = canvas.height;
+    let textLines = [];
+    let animationId;
 
-    // 1. 【初始化抢跑】在页面加载时就建立流连接，不放在点击里做
-    const stream = canvas.captureStream(30);
-    video.srcObject = stream;
-
-    speedInput.oninput = () => { speedVal.innerText = speedInput.value; };
-
-    function wrapText(text) {
-        ctx.font = 'bold 54px sans-serif';
-        const maxWidth = canvas.width - 80;
-        const lines = [];
-        const chars = text.split('');
-        let currentLine = '';
-
-        for (let n = 0; n < chars.length; n++) {
-            if (chars[n] === '\n') { lines.push(currentLine); currentLine = ''; continue; }
-            let testLine = currentLine + chars[n];
-            if (ctx.measureText(testLine).width > maxWidth) {
-                lines.push(currentLine); currentLine = chars[n];
-            } else { currentLine = testLine; }
+    // 1. 初始化相机
+    async function initCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "user", width: 1280, height: 720 }, 
+                audio: true 
+            });
+            video.srcObject = stream;
+        } catch (err) {
+            alert("无法访问摄像头，请检查 Safari 权限设置");
         }
-        lines.push(currentLine);
+    }
+
+    // 2. 画布尺寸适配
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.onresize = resizeCanvas;
+    resizeCanvas();
+
+    // 3. 提词逻辑
+    function wrapText(text) {
+        ctx.font = 'bold 30px sans-serif';
+        const lines = [];
+        const words = text.split('');
+        let line = '';
+        const maxWidth = canvas.width * 0.8;
+        for (let n = 0; n < words.length; n++) {
+            if (words[n] === '\n') { lines.push(line); line = ''; continue; }
+            if (ctx.measureText(line + words[n]).width > maxWidth) {
+                lines.push(line); line = words[n];
+            } else { line += words[n]; }
+        }
+        lines.push(line);
         return lines;
     }
 
     function draw() {
         if (!isPlaying) return;
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#00FF00'; // 荧光绿
-        ctx.font = 'bold 54px sans-serif';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // 提词区域背景阴影（方便看清文字）
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        ctx.fillRect(0, 50, canvas.width, 250);
 
-        const lineHeight = 85;
+        ctx.fillStyle = '#00FF00';
+        ctx.font = 'bold 32px sans-serif';
+        ctx.textAlign = 'center';
+        
         const elapsed = (Date.now() - startTime) / 1000;
         const speed = parseFloat(speedInput.value);
-        let yPos = initialOffset - (speed * elapsed * 30); 
-
-        const totalHeight = textLines.length * lineHeight;
-        if (yPos < -totalHeight) { startTime = Date.now(); yPos = initialOffset; }
+        let yPos = 280 - (speed * elapsed * 30); // 从上方开始滚
 
         textLines.forEach((line, i) => {
-            const drawY = yPos + (i * lineHeight);
-            if (drawY > -lineHeight && drawY < canvas.height) {
-                ctx.fillText(line, 40, drawY);
+            const drawY = yPos + (i * 45);
+            if (drawY > 50 && drawY < 300) {
+                ctx.fillText(line, canvas.width / 2, drawY);
             }
         });
-        requestAnimationFrame(draw);
+
+        animationId = requestAnimationFrame(draw);
     }
 
-    // 2. 【核心点击函数】绝对同步化，没有任何异步链
-    pipBtn.onclick = function() {
-        const content = textInput.value.trim();
-        if (!content) { alert("请输入文案"); return; }
-
-        // 数据预备
-        textLines = wrapText(content);
-        startTime = Date.now();
-        initialOffset = canvas.height;
-        isPlaying = true;
-
-        // 预画一帧
-        draw();
-
-        // 【终极暴力调用】
-        // 顺序：启动视频播放 -> 立即申请画中画。
-        // 不等待 Promise，不使用 .then() 或 .catch() 阻塞当前线程
-        video.play();
-        
-        try {
-            if (video.webkitSetPresentationMode) {
-                // 旧版 Safari 兼容性
-                video.webkitSetPresentationMode('picture-in-picture');
-            } else if (typeof video.requestPictureInPicture === 'function') {
-                // 标准画中画
-                video.requestPictureInPicture();
-            } else {
-                alert("当前环境不支持画中画");
-            }
-            
-            pipBtn.innerText = "运行中...";
-            pipBtn.style.backgroundColor = "#34c759";
-        } catch (e) {
-            console.error(e);
-            alert("点击过快或系统拦截，请刷新重试。");
+    startBtn.onclick = () => {
+        if (!isPlaying) {
+            const content = textInput.value.trim();
+            if (!content) return alert("请先输入文案");
+            textLines = wrapText(content);
+            startTime = Date.now();
+            isPlaying = true;
+            startBtn.innerText = "停止录制";
+            draw();
+            // 这里可以添加 MediaRecorder 逻辑来保存视频
+        } else {
+            isPlaying = false;
+            cancelAnimationFrame(animationId);
+            startBtn.innerText = "开始拍摄";
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
     };
 
-    video.addEventListener('leavepictureinpicture', () => {
-        isPlaying = false;
-        pipBtn.innerText = "开启悬浮提词";
-        pipBtn.style.backgroundColor = "#007aff";
-    });
+    function toggleUI() {
+        const panel = document.querySelector('.control-panel');
+        if (panel.style.display === 'none') {
+            panel.style.display = 'block';
+            document.getElementById('settingsBtn').innerText = "收起设置";
+        } else {
+            panel.style.display = 'none';
+            document.getElementById('settingsBtn').innerText = "展开设置";
+        }
+    }
 
+    initCamera();
 </script>
 </body>
 </html>
