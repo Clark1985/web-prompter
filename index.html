@@ -2,153 +2,130 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>网页提词器</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>极客自研提词器</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: #121212;
-            color: #e0e0e0;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-        }
-        h1 {
-            font-size: 24px;
-            margin-bottom: 20px;
-        }
-        textarea {
-            width: 90%;
-            max-width: 600px;
-            height: 40vh;
-            background-color: #1e1e1e;
-            color: #e0e0e0;
-            border: 1px solid #444;
-            border-radius: 8px;
-            padding: 10px;
-            font-size: 16px;
-            margin-bottom: 20px;
-        }
-        button {
-            width: 90%;
-            max-width: 600px;
-            padding: 15px;
-            font-size: 18px;
-            font-weight: bold;
-            color: #ffffff;
-            background-color: #007aff;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        
-        /* --- 这是关键的修复 --- */
-        /* 不再使用 display: none，而是将元素移出屏幕外 */
-        .hidden-elements {
-            position: absolute;
-            top: -9999px;
-            left: -9999px;
-            opacity: 0;
-            width: 1px;
-            height: 1px;
-            overflow: hidden;
-        }
-        /* --- 修复结束 --- */
-
+        body { font-family: -apple-system, sans-serif; background: #f2f2f7; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        textarea { width: 100%; max-width: 400px; height: 180px; border-radius: 12px; border: 1px solid #ccc; padding: 15px; font-size: 16px; margin-bottom: 20px; outline: none; }
+        .controls { width: 100%; max-width: 400px; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+        .speed-control { display: flex; align-items: center; margin-bottom: 20px; gap: 10px; }
+        input[type="range"] { flex: 1; }
+        button { width: 100%; background: #007aff; color: white; border: none; padding: 16px; border-radius: 12px; font-size: 18px; font-weight: 600; cursor: pointer; }
+        /* 核心改动：Video 不能 display:none，设为 1px 并透明 */
+        #streamVideo { position: fixed; bottom: 0; right: 0; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; }
+        #prompterCanvas { display: none; }
     </style>
 </head>
 <body>
 
-    <h1>网页悬浮提词器</h1>
-    <textarea id="text-input" placeholder="请在这里粘贴您的台词..."></textarea>
-    <button id="start-pip-btn">启动悬浮提词</button>
-
-    <div class="hidden-elements">
-        <canvas id="teleprompter-canvas" width="600" height="800"></canvas>
-        <video id="pip-video" playsinline muted></video>
+    <h2>🚀 极简提词器</h2>
+    <textarea id="textInput" placeholder="在此粘贴录像文案..."></textarea>
+    
+    <div class="controls">
+        <div class="speed-control">
+            <span>🐢</span>
+            <input type="range" id="speedInput" min="0.5" max="8" step="0.1" value="2">
+            <span>🐇</span>
+        </div>
+        <button id="pipBtn">一键开启悬浮窗</button>
     </div>
 
+    <canvas id="prompterCanvas" width="600" height="800"></canvas>
+    <video id="streamVideo" muted playsinline></video>
+
     <script>
-        const textInput = document.getElementById('text-input');
-        const startBtn = document.getElementById('start-pip-btn');
-        const canvas = document.getElementById('teleprompter-canvas');
-        const video = document.getElementById('pip-video');
+        const textInput = document.getElementById('textInput');
+        const pipBtn = document.getElementById('pipBtn');
+        const speedInput = document.getElementById('speedInput');
+        const canvas = document.getElementById('prompterCanvas');
         const ctx = canvas.getContext('2d');
+        const video = document.getElementById('streamVideo');
 
-        let animationFrameId = null;
+        let yOffset = canvas.height;
+        let textLines = [];
+        let isPlaying = false;
 
-        startBtn.addEventListener('click', () => {
-            if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId);
-                animationFrameId = null;
+        // 文字排版逻辑
+        function wrapText(text) {
+            ctx.font = 'bold 50px sans-serif'; 
+            const words = text.split('');
+            let line = '';
+            const lines = [];
+            const maxWidth = canvas.width - 80;
+
+            for (let n = 0; n < words.length; n++) {
+                if (words[n] === '\n') { lines.push(line); line = ''; continue; }
+                let testLine = line + words[n];
+                if (ctx.measureText(testLine).width > maxWidth) {
+                    lines.push(line);
+                    line = words[n];
+                } else { line = testLine; }
             }
-            
-            if (!document.pictureInPictureEnabled) {
-                alert('您的浏览器不支持画中画功能。');
-                return;
-            }
-
-            const requestPiP = async () => {
-                try {
-                    await video.requestPictureInPicture();
-                } catch (error) {
-                    console.error('请求画中画失败:', error);
-                    alert(`启动画中画失败: ${error.message}`);
-                }
-            };
-
-            video.addEventListener('playing', requestPiP, { once: true });
-
-            video.srcObject = canvas.captureStream(30);
-            startScrollingAnimation();
-            video.play().catch(error => {
-                console.error('视频播放失败:', error);
-                alert(`无法播放视频流: ${error.message}`);
-                video.removeEventListener('playing', requestPiP);
-            });
-        });
-        
-        video.addEventListener('leavepictureinpicture', () => {
-            if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId);
-                animationFrameId = null;
-            }
-        });
-
-        function startScrollingAnimation() {
-            const text = textInput.value;
-            const lines = text.split('\n');
-            const scrollSpeed = 0.8;
-            const lineHeight = 45;
-            const font = 'bold 32px sans-serif';
-            let yOffset = canvas.height;
-
-            function draw() {
-                ctx.fillStyle = 'black';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#00ff00';
-                ctx.font = font;
-                ctx.textAlign = 'center';
-                for (let i = 0; i < lines.length; i++) {
-                    ctx.fillText(lines[i], canvas.width / 2, yOffset + (i * lineHeight));
-                }
-                yOffset -= scrollSpeed;
-                const totalTextHeight = lines.length * lineHeight;
-                if (yOffset < -totalTextHeight) {
-                    yOffset = canvas.height;
-                }
-                animationFrameId = requestAnimationFrame(draw);
-            }
-            draw();
+            lines.push(line);
+            return lines;
         }
-    </script>
 
+        // 渲染循环
+        function animate() {
+            if (!isPlaying) return;
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#00FF00'; // 提词器经典的绿色，对比度最高
+            ctx.font = 'bold 50px sans-serif';
+            ctx.textAlign = 'left';
+
+            textLines.forEach((line, i) => {
+                const drawY = yOffset + (i * 75);
+                if (drawY > -80 && drawY < canvas.height + 80) {
+                    ctx.fillText(line, 40, drawY);
+                }
+            });
+
+            yOffset -= parseFloat(speedInput.value);
+            if (yOffset < -(textLines.length * 75)) yOffset = canvas.height;
+            requestAnimationFrame(animate);
+        }
+
+        // 核心按钮点击事件
+        pipBtn.onclick = async () => {
+            const content = textInput.value.trim();
+            if (!content) return alert("请输入文案");
+
+            // 1. 初始化数据
+            textLines = wrapText(content);
+            yOffset = canvas.height;
+            isPlaying = true;
+            animate();
+
+            // 2. 核心补丁：先获取流，立刻赋值，立刻播放
+            try {
+                if (!video.srcObject) {
+                    video.srcObject = canvas.captureStream(30);
+                }
+                
+                await video.play();
+
+                // 3. 触发画中画
+                if (document.pictureInPictureEnabled) {
+                    await video.requestPictureInPicture();
+                } else {
+                    alert("当前浏览器不支持画中画");
+                }
+            } catch (e) {
+                console.error(e);
+                // 终极提示：如果是 file:// 协议，Safari 会拦截
+                if (location.protocol === 'file:') {
+                    alert("Safari 安全限制：请不要直接双击打开 HTML，请将其部署到 Vercel 或使用本地服务器访问。");
+                } else {
+                    alert("启动失败，请重试");
+                }
+            }
+        };
+
+        video.addEventListener('leavepictureinpicture', () => {
+            isPlaying = false;
+            pipBtn.innerText = "一键开启悬浮窗";
+        });
+    </script>
 </body>
 </html>
