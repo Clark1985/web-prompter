@@ -3,39 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>提词器 v3.0 (抗干扰版)</title>
+    <title>提词黑客 v4.0 终极版</title>
     <style>
         :root { --apple-blue: #007aff; }
-        body { font-family: -apple-system, sans-serif; background: #f2f2f7; margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; -webkit-user-select: none; }
+        body { font-family: -apple-system, sans-serif; background: #f2f2f7; margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
         .container { width: 100%; max-width: 500px; padding: 20px; box-sizing: border-box; }
-        h2 { text-align: center; color: #1c1c1e; margin-bottom: 20px; }
-        textarea { width: 100%; height: 250px; border-radius: 16px; border: 1px solid #d1d1d6; padding: 15px; font-size: 17px; line-height: 1.5; box-sizing: border-box; background: white; resize: none; outline: none; }
-        .card { background: white; border-radius: 16px; padding: 20px; margin-top: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-        .label-row { display: flex; justify-content: space-between; margin-bottom: 5px; color: #8e8e93; font-size: 14px; }
-        input[type="range"] { width: 100%; margin: 10px 0 25px 0; -webkit-appearance: none; background: #d1d1d6; height: 4px; border-radius: 2px; }
-        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 26px; background: white; border-radius: 50%; box-shadow: 0 3px 8px rgba(0,0,0,0.15); border: 0.5px solid #d1d1d6; }
-        button { width: 100%; background-color: var(--apple-blue); color: white; border: none; padding: 18px; border-radius: 14px; font-size: 18px; font-weight: 600; cursor: pointer; }
-        button:active { background-color: #005bb5; }
-        /* Video 标签：必须可见且在 DOM 里，设为透明小方块悬浮在右上角 */
-        #streamVideo { position: fixed; top: 10px; right: 10px; width: 20px; height: 15px; opacity: 0.05; pointer-events: none; }
+        textarea { width: 100%; height: 260px; border-radius: 16px; border: 1px solid #d1d1d6; padding: 15px; font-size: 17px; line-height: 1.5; box-sizing: border-box; background: white; resize: none; outline: none; }
+        .card { background: white; border-radius: 16px; padding: 20px; margin-top: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); width: 100%; box-sizing: border-box; }
+        .label-row { display: flex; justify-content: space-between; color: #8e8e93; font-size: 14px; margin-bottom: 5px; }
+        input[type="range"] { width: 100%; margin: 15px 0 25px 0; -webkit-appearance: none; background: #d1d1d6; height: 4px; border-radius: 2px; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; background: white; border-radius: 50%; box-shadow: 0 3px 8px rgba(0,0,0,0.2); border: 0.5px solid #d1d1d6; }
+        button { width: 100%; background-color: var(--apple-blue); color: white; border: none; padding: 18px; border-radius: 14px; font-size: 19px; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        button:active { opacity: 0.8; }
+        #streamVideo { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; }
         #prompterCanvas { display: none; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>抗干扰提词器 v3.0</h2>
-    <textarea id="textInput" placeholder="在此粘贴文案..."></textarea>
+    <h2 style="text-align: center;">🚀 提词器 4.0</h2>
+    <textarea id="textInput" placeholder="在此粘贴你的录制文案..."></textarea>
     
     <div class="card">
-        <div class="label-row"><span>滚动速度</span><span id="speedVal">2.0</span></div>
-        <input type="range" id="speedInput" min="0.5" max="15" step="0.1" value="2.0">
-        <button id="pipBtn">启动提词黑客</button>
+        <div class="label-row"><span>滚动速度</span><span id="speedVal">2.5</span></div>
+        <input type="range" id="speedInput" min="0.5" max="15" step="0.1" value="2.5">
+        <button id="pipBtn">开启悬浮提词</button>
     </div>
 </div>
 
 <canvas id="prompterCanvas" width="600" height="800"></canvas>
-<video id="streamVideo" muted playsinline></video>
+<video id="streamVideo" muted playsinline autocomplete="off"></video>
 
 <script>
     const textInput = document.getElementById('textInput');
@@ -48,8 +46,8 @@
 
     let textLines = [];
     let isPlaying = false;
-    let startTime; 
-    let initialOffset = canvas.height; 
+    let startTime;
+    let initialOffset = canvas.height;
 
     speedInput.oninput = () => { speedVal.innerText = speedInput.value; };
 
@@ -61,42 +59,44 @@
         let currentLine = '';
 
         for (let n = 0; n < chars.length; n++) {
-            if (chars[n] === '\n') { lines.push(currentLine); currentLine = ''; continue; }
+            if (chars[n] === '\n') {
+                lines.push(currentLine);
+                currentLine = '';
+                continue;
+            }
             let testLine = currentLine + chars[n];
             if (ctx.measureText(testLine).width > maxWidth) {
-                lines.push(currentLine); currentLine = words[n] ? words[n]: chars[n];
-            } else { currentLine = testLine; }
+                lines.push(currentLine);
+                currentLine = chars[n];
+            } else {
+                currentLine = testLine;
+            }
         }
         lines.push(currentLine);
         return lines;
     }
 
-    // [核心优化] 从帧驱动改为时间驱动滚动，避免系统节流导致冻结
     function draw() {
-        if (!isPlaying || video.paused) return; // 只有视频真正播放时才画，省电
+        if (!isPlaying) return;
 
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        ctx.fillStyle = '#00FF00'; // 荧光绿，录制效果最佳
+        ctx.fillStyle = '#00FF00'; // 荧光绿
         ctx.font = 'bold 52px sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
 
-        const lineHeight = 78;
-        
-        // 计算已播放时长 (秒)
+        const lineHeight = 80;
         const elapsedSeconds = (Date.now() - startTime) / 1000;
         const currentSpeed = parseFloat(speedInput.value);
         
-        // 根据时间和速度计算当前应该滚动的距离
-        // yPos = 起始位置 - (速度 * 时长 * 系数)
-        const totalTextHeight = textLines.length * lineHeight;
-        let yPos = initialOffset - (currentSpeed * elapsedSeconds * 25); 
+        // yPos = 起始位置 - 偏移量 (基于时间，不被系统掉帧干扰)
+        let yPos = initialOffset - (currentSpeed * elapsedSeconds * 30); 
 
-        // 循环播放逻辑
-        if (yPos < -totalTextHeight) {
-            startTime = Date.now(); // 重置时间
+        const totalHeight = textLines.length * lineHeight;
+        if (yPos < -totalHeight) {
+            startTime = Date.now();
             yPos = initialOffset;
         }
 
@@ -110,64 +110,49 @@
         requestAnimationFrame(draw);
     }
 
-    pipBtn.onclick = async () => {
+    // 核心点击函数：采用同步触发策略
+    pipBtn.onclick = function() {
         const content = textInput.value.trim();
-        if (!content) return;
+        if (!content) return alert("请输入文案");
 
+        // 1. 立即准备数据
         textLines = wrapText(content);
-        
-        // 准备开始数据
         startTime = Date.now();
         initialOffset = canvas.height;
         isPlaying = true;
 
-        try {
-            // 1. 初始化视频流
-            if (!video.srcObject) {
-                video.srcObject = canvas.captureStream(30);
-            }
-            
-            // 2. 【Safari 兼容性组合拳】同步启动
-            // 必须在 requestPiP 之前确保视频获得播放状态，哪怕是暂停后重启
-            await video.play();
+        // 2. 强制预渲染一帧，防止视频流初始化为空
+        draw();
 
-            if (document.pictureInPictureEnabled) {
-                if (document.pictureInPictureElement !== video) {
-                    await video.requestPictureInPicture();
-                    pipBtn.innerText = "画中画已开启";
+        // 3. 同步执行启动链
+        if (!video.srcObject) {
+            const stream = canvas.captureStream(30);
+            video.srcObject = stream;
+        }
+
+        // 重要：不使用 await，直接连续调用
+        video.play().catch(e => console.log("Play failed", e));
+        
+        if (document.pictureInPictureEnabled) {
+            video.requestPictureInPicture()
+                .then(() => {
+                    pipBtn.innerText = "运行中...";
                     pipBtn.style.backgroundColor = "#34c759";
-                }
-            }
-        } catch (error) {
-            console.error(error);
-            isPlaying = false;
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("启动失败：请确保在 Safari 中使用。如果多次失败，请刷新网页再试。");
+                    isPlaying = false;
+                });
         }
     };
 
-    // [终极补丁] 监听视频组件的播放和暂停事件
-    // 这是系统强制暂停和我们代码强制唤醒的关键
-    
-    // 监听视频状态变为播放
-    video.addEventListener('play', () => {
-        console.log("视频获得系统播放权限，重启 Canvas");
-        // 如果是因为从相机切回来导致重启，我们只需保持 isPlaying = true，
-        // 时间驱动滚动会自动校正文字位置
-        requestAnimationFrame(draw);
-    });
-
-    // 监听画中画关闭
     video.addEventListener('leavepictureinpicture', () => {
         isPlaying = false;
-        pipBtn.innerText = "启动提词黑客";
+        pipBtn.innerText = "开启悬浮提词";
         pipBtn.style.backgroundColor = "#007aff";
     });
 
-    // 处理系统对后台标签页的节流（可选，配合 Vercel)
-    window.addEventListener('blur', () => {
-        // 进入画中画时，网页主体可能失去焦点，不需要在这里暂停，让视频监听处理
-    });
-
 </script>
-
 </body>
 </html>
